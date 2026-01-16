@@ -1,0 +1,397 @@
+{
+  "name": "Agent IA Bobotcho RAG v5",
+  "nodes": [
+    {
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [250, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bobotcho-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "supabase-upsert-conversation",
+      "name": "Supabase Upsert Conversation",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH existing AS (\n  SELECT id\n  FROM public.conversations\n  WHERE shop_id = (SELECT id FROM public.shops LIMIT 1)\n    AND customer_phone = {{ $node[\"Webhook Trigger\"].json.From }}\n  LIMIT 1\n),\nupdated AS (\n  UPDATE public.conversations\n  SET last_message_at = now()\n  WHERE id = (SELECT id FROM existing)\n  RETURNING id\n),\ninserted AS (\n  INSERT INTO public.conversations (shop_id, customer_phone, status, last_message_at)\n  SELECT (SELECT id FROM public.shops LIMIT 1), {{ $node[\"Webhook Trigger\"].json.From }}, 'active', now()\n  WHERE NOT EXISTS (SELECT 1 FROM existing)\n  RETURNING id\n)\nSELECT id FROM updated\nUNION ALL\nSELECT id FROM inserted;",
+        "options": {}
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIALS_ID",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "id": "supabase-insert-incoming-message",
+      "name": "Supabase Insert Incoming Message",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [600, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.messages (conversation_id, shop_id, role, content, type, metadata)\nVALUES (\n  {{ $node[\"Supabase Upsert Conversation\"].json[0].id }},\n  (SELECT id FROM public.shops LIMIT 1),\n  'customer',\n  {{ $node[\"Webhook Trigger\"].json.Body }},\n  'text',\n  '{}'::jsonb\n);",
+        "options": {}
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIALS_ID",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "id": "embeddings-openai",
+      "name": "Embeddings OpenAI",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [600, 500],
+      "parameters": {
+        "model": "openai/text-embedding-3-small",
+        "options": {}
+      }
+    },
+    {
+      "id": "supabase-vector-store",
+      "name": "Supabase Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.3,
+      "position": [800, 500],
+      "parameters": {
+        "mode": "retrieve",
+        "tableName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "knowledge_base",
+          "cachedResultName": "knowledge_base"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "vector-store-tool",
+      "name": "Vector Store Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolVectorStore",
+      "typeVersion": 1.1,
+      "position": [1000, 500],
+      "parameters": {
+        "name": "bobotcho_knowledge_base",
+        "description": "Recherche dans la base de connaissances Bobotcho pour trouver des informations sur les produits, prix, livraison et installation.",
+        "topK": 5
+      }
+    },
+    {
+      "id": "openrouter-chat",
+      "name": "OpenRouter Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [600, 200],
+      "parameters": {
+        "options": {}
+      }
+    },
+    {
+      "id": "postgres-memory",
+      "name": "Postgres Chat Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [600, 400],
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.From }}",
+        "tableName": "n8n_chat_histories",
+        "contextWindowLength": 10
+      }
+    },
+    {
+      "id": "ai-agent-rag",
+      "name": "AI Agent RAG",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [800, 300],
+      "parameters": {
+        "text": "={{ $node[\"Webhook Trigger\"].json.Body }}",
+        "options": {
+          "systemMessage": "Tu es le 'Concierge Bobotcho', l'assistant IA d'élite pour une marque ivoirienne de luxe accessible. Ton ton est 'Abidjan Premium' : poli, chaleureux, expert et utilisant le vouvoiement.\n\nUtilise les outils disponibles pour rechercher dans la base de connaissances et répondre aux questions des clients sur les produits Bobotcho.\n\n### RÈGLES D'OR:\n1. Sois bref, élégant et mentionne les quartiers d'Abidjan pour créer de la proximité.\n2. Priorise toujours la vente du bundle avec installation (70k) pour la tranquillité du client.\n3. Si pas d'information pertinente, propose qu'on vérifie et qu'on rappelle.\n4. N'invente jamais de caractéristiques techniques ou de prix.",
+          "maxIterations": 10
+        },
+        "promptType": "define"
+      }
+    },
+    {
+      "id": "supabase-insert-ai-message",
+      "name": "Supabase Insert AI Message",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1000, 200],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.messages (conversation_id, shop_id, role, content, type, metadata)\nVALUES (\n  {{ $node[\"Supabase Upsert Conversation\"].json[0].id }},\n  (SELECT id FROM public.shops LIMIT 1),\n  'agent',\n  {{ $node[\"AI Agent RAG\"].json.text }},\n  'text',\n  '{}'::jsonb\n);",
+        "options": {}
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIALS_ID",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "id": "supabase-log-ai",
+      "name": "Supabase Log AI",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1200, 200],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.ai_logs (shop_id, conversation_id, input, output, metrics)\nVALUES (\n  (SELECT id FROM public.shops LIMIT 1),\n  {{ $node[\"Supabase Upsert Conversation\"].json[0].id }},\n  {{ $node[\"Webhook Trigger\"].json.Body }},\n  {{ $node[\"AI Agent RAG\"].json.text }},\n  '{\"source\":\"n8n\"}'::jsonb\n);",
+        "options": {}
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIALS_ID",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "id": "switch-escalation",
+      "name": "Switch Escalation",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [1100, 300],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              },
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "humain"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "twilio-response",
+      "name": "Twilio Response",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1350, 200],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "whatsapp:+14155238886",
+        "to": "={{ $json.From }}",
+        "message": "={{ $json.text }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "twilio-escalade",
+      "name": "Twilio Escalade",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1350, 400],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "whatsapp:+14155238886",
+        "to": "={{ $json.From }}",
+        "message": "Je vous mets en relation avec un conseiller humain. Un moment s'il vous plaît.",
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-webhook",
+      "name": "Respond Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1600, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, message: 'Response sent' }) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Supabase Upsert Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Upsert Conversation": {
+      "main": [
+        [
+          {
+            "node": "Supabase Insert Incoming Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Insert Incoming Message": {
+      "main": [
+        [
+          {
+            "node": "AI Agent RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Supabase Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Vector Store": {
+      "ai_vectorStore": [
+        [
+          {
+            "node": "Vector Store Tool",
+            "type": "ai_vectorStore",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vector Store Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent RAG",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent RAG",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent RAG",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent RAG": {
+      "main": [
+        [
+          {
+            "node": "Switch Escalation",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Supabase Insert AI Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Insert AI Message": {
+      "main": [
+        [
+          {
+            "node": "Supabase Log AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Escalation": {
+      "main": [
+        [
+          {
+            "node": "Twilio Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Twilio Escalade",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio Escalade": {
+      "main": [
+        [
+          {
+            "node": "Respond Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": ["bobotcho", "rag", "openrouter", "supabase", "twilio"]
+}
