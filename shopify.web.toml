@@ -1,0 +1,11 @@
+# Learn more about configuring your web config at https://shopify.dev/docs/apps/tools/cli/configuration
+
+[[web]]
+name = "app"
+type = "frontend"
+commands = { build = "npm run build", dev = "npm run dev" }
+
+[[web]]
+name = "api"
+type = "backend"
+commands = { build = "npm run build", dev = "npm run dev" }

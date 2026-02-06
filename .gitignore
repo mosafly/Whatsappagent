@@ -36,6 +36,32 @@ yarn-error.log*
 # vercel
 .vercel
 
+# logs
+*.log
+cloudflared.log
+
+# bmad outputs
+/_bmad/
+/_bmad-output/
+
+# temp files
+temp-antigravity-kit/
+file_list.txt
+test_payload.json
+ux_paths.txt
+
+# shopify local state
+.shopify
+
+# IDE and tool specific
+.windsurf/
+.claude/
+
+# supabase temp
+/supabase/.temp/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+.vercel

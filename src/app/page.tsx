@@ -5,26 +5,50 @@ import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { SupabaseStatus } from '@/components/ui/SupabaseStatus';
 import { DebugLogTester } from '@/components/ui/DebugLogTester';
 import { Page, Layout, Card, Text, Button, BlockStack } from '@shopify/polaris';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function Home() {
   const [loading, setLoading] = useState(true);
+  const [shop, setShop] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
-    // Simulate Shopify Auth / App Bridge loading
+    // Récupérer les paramètres Shopify de l'URL
+    const shopParam = searchParams.get('shop');
+    const hostParam = searchParams.get('host');
+    
+    if (shopParam) {
+      setShop(shopParam);
+      // Stocker les infos Shopify dans localStorage
+      localStorage.setItem('shopify-shop', shopParam);
+      if (hostParam) {
+        localStorage.setItem('shopify-host', hostParam);
+      }
+    }
+
+    // Simuler le chargement et vérifier l'authentification
     const timer = setTimeout(() => {
       setLoading(false);
+      
+      // Si pas de shop et pas en mode développement, rediriger vers l'auth
+      if (!shopParam && process.env.NODE_ENV === 'production') {
+        router.push('/api/auth');
+      }
     }, 2000);
+    
     return () => clearTimeout(timer);
-  }, []);
+  }, [searchParams, router]);
 
   if (loading) {
     return <LoadingScreen />;
   }
 
   return (
-    <Page title="Whatsappagent Dashboard">
+    <Page 
+      title="Whatsappagent Dashboard"
+      subtitle={shop ? `Shop: ${shop}` : 'Mode Développement'}
+    >
       <Layout>
         <Layout.Section>
           <Card>
@@ -43,6 +67,13 @@ export default function Home() {
                   Configuration
                 </Button>
               </div>
+              {shop && (
+                <div className="mt-4 p-4 bg-green-50 rounded-lg">
+                  <Text as="p" variant="bodySm" tone="success">
+                    ✅ Connecté à Shopify: {shop}
+                  </Text>
+                </div>
+              )}
             </BlockStack>
           </Card>
         </Layout.Section>

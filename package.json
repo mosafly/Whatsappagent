@@ -10,19 +10,28 @@
     "test": "jest",
     "test:e2e": "playwright test",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "shopify:dev": "shopify app dev",
+    "shopify:deploy": "shopify app deploy",
+    "shopify:generate": "shopify app generate"
   },
   "dependencies": {
+    "@shopify/shopify-api": "^10.0.0",
     "@shopify/app-bridge-react": "^4.2.8",
     "@shopify/polaris": "^13.9.5",
     "@shopify/polaris-icons": "^9.3.1",
-    "@shopify/shopify-api": "^12.2.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.90.1",
     "next": "16.1.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "twilio": "^5.11.2"
+    "twilio": "^5.11.2",
+    "jose": "^5.9.6",
+    "@prisma/client": "^5.10.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
@@ -36,6 +45,7 @@
     "jest": "^30.2.0",
     "tailwindcss": "^4",
     "ts-jest": "^29.4.6",
-    "typescript": "^5"
+    "typescript": "^5",
+    "prisma": "^5.10.2"
   }
 }

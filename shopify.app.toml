@@ -1,0 +1,44 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "d44e8f1d40c4b9e23a41f4c1e139ab33"
+name = "Whatsappagent"
+application_url = "https://bureau-singer-salmon-paid.trycloudflare.com"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+# dev_store_url = "https://rshm1k-xb.myshopify.com"
+include_config_on_deploy = true
+
+[webhooks]
+api_version = "2025-10"
+
+  [[webhooks.subscriptions]]
+  topics = [
+  "products/create",
+  "products/delete",
+  "products/update",
+  "orders/cancelled",
+  "orders/create",
+  "orders/updated",
+  "customers/create",
+  "customers/update",
+  "app/uninstalled"
+]
+  uri = "/api/webhooks"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_customers,write_customers,write_inventory,read_inventory,read_orders,write_orders,read_products,write_products"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "https://bureau-singer-salmon-paid.trycloudflare.com/api/auth/callback",
+  "https://bureau-singer-salmon-paid.trycloudflare.com/api/auth/shopify/callback",
+  "http://localhost:3000/api/auth/callback"
+]
+
+[pos]
+embedded = false

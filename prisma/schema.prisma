@@ -1,0 +1,166 @@
+// Prisma Schema pour Whatsappagent Shopify App
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = "postgresql://postgres.abcdefg:password@aws-0-eu-west-1.pooler.supabase.com:5432/postgres"
+}
+
+// Sessions Shopify pour l'authentification
+model ShopifySession {
+  id        String   @id @default(cuid())
+  shop      String   @unique
+  state     String   @unique
+  isOnline  Boolean  @default(false)
+  scope     String[]
+  expires   DateTime?
+  accessToken String
+  onlineAccessInfo Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("shopify_sessions")
+}
+
+// Configuration du shop pour Whatsappagent
+model ShopConfiguration {
+  id        String   @id @default(cuid())
+  shop      String   @unique
+  isActive  Boolean  @default(true)
+  
+  // Configuration WhatsApp
+  twilioAccountSid    String?
+  twilioAuthToken    String?
+  twilioPhoneNumber  String?
+  
+  // Messages templates
+  welcomeMessage      String?
+  orderConfirmationMessage String?
+  shippingNotificationMessage String?
+  
+  // Paramètres de l'agent
+  agentName           String   @default("Concierge WhatsApp")
+  agentLanguage       String   @default("fr")
+  workingHours        Json?     // {"start": "09:00", "end": "18:00", "timezone": "Europe/Paris"}
+  
+  // Configuration IA
+  aiModel             String   @default("gpt-4")
+  aiTemperature       Float    @default(0.7)
+  maxTokens           Int      @default(1000)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  conversations Conversation[]
+
+  @@map("shop_configurations")
+}
+
+// Conversations WhatsApp
+model Conversation {
+  id          String   @id @default(cuid())
+  shop        String
+  phoneNumber String
+  customerName String?
+  status      String   @default("active") // active, closed, archived
+  
+  // Métadonnées Shopify
+  customerId  String?
+  orderId     String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  messages    Message[]
+  shopConfig  ShopConfiguration @relation(fields: [shop], references: [shop])
+
+  @@map("conversations")
+}
+
+// Messages dans les conversations
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  content        String
+  direction      String   // inbound, outbound
+  messageType    String   // text, image, document, location
+  
+  // Métadonnées
+  twilioSid      String?
+  sentAt         DateTime?
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  
+  // IA et analyse
+  aiProcessed    Boolean  @default(false)
+  aiIntent       String?
+  aiSentiment    String?
+  aiConfidence   Float?
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+
+  @@map("messages")
+}
+
+// Templates de messages
+model MessageTemplate {
+  id          String   @id @default(cuid())
+  shop        String
+  name        String
+  category    String   // welcome, order, shipping, support, marketing
+  language    String   @default("fr")
+  content     String
+  variables   Json?    // {"customer_name": "string", "order_number": "string"}
+  isActive    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("message_templates")
+}
+
+// Analytics et métriques
+model Analytics {
+  id            String   @id @default(cuid())
+  shop          String
+  date          DateTime @default(now())
+  
+  // Métriques quotidiennes
+  messagesSent      Int @default(0)
+  messagesReceived  Int @default(0)
+  conversationsStarted Int @default(0)
+  conversionsGenerated Int @default(0)
+  
+  // Métriques de performance
+  averageResponseTime Float? // en secondes
+  customerSatisfaction Float? // 0-100
+  
+  // Métadonnées
+  metadata      Json?
+
+  @@map("analytics")
+}
+
+// Webhooks logs pour debugging
+model WebhookLog {
+  id        String   @id @default(cuid())
+  shop      String
+  topic     String
+  payload   Json
+  processed Boolean  @default(false)
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@map("webhook_logs")
+}
+
+// Relations pour ShopConfiguration
+// Note: ShopConfiguration est déjà défini ci-dessus
