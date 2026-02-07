@@ -148,42 +148,68 @@ export async function POST(req: NextRequest) {
 
     if (msgError) throw msgError;
 
-    // 4. Appel à l'Agent IA (n8n) avec timeout et retry
+    // 4. Appel à l'Agent IA (FastAPI backend ou n8n fallback)
     const startTime = Date.now();
     let aiResponseText = "";
     let aiError = null;
 
-    const N8N_TIMEOUT_MS = 25000; // 25s pour garder de la marge
+    const BACKEND_URL = process.env.BACKEND_URL; // FastAPI backend
+    const AI_TIMEOUT_MS = 25000;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), N8N_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
     try {
-      const n8nRes = await fetch(process.env.N8N_WEBHOOK_URL!, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Header ${process.env.N8N_AUTH_TOKEN}`
-        },
-        body: JSON.stringify({
-          Body: body,                    // ← n8n RAG v5 attend "Body"
-          From: customerPhone,          // ← n8n RAG v5 attend "From" pour mémoire
-          conversationId: conversation.id,
-          messageId: insertedMsg.id
-        }),
-        signal: controller.signal
-      });
+      if (BACKEND_URL) {
+        // FastAPI backend (replaces n8n)
+        const backendRes = await fetch(`${BACKEND_URL}/api/ai-response`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': process.env.BACKEND_API_KEY || '',
+          },
+          body: JSON.stringify({
+            Body: body,
+            From: customerPhone,
+            conversationId: conversation.id,
+            messageId: insertedMsg.id,
+          }),
+          signal: controller.signal,
+        });
 
-      clearTimeout(timeoutId);
-      
-      if (!n8nRes.ok) throw new Error(`n8n error: ${n8nRes.statusText}`);
-      
-      const n8nData = await n8nRes.json();
-      // n8n RAG v5 envoie directement via Twilio, pas de retour de message
-      aiResponseText = "Message sent via n8n workflow";
+        clearTimeout(timeoutId);
+
+        if (!backendRes.ok) throw new Error(`Backend error: ${backendRes.statusText}`);
+
+        const backendData = await backendRes.json();
+        aiResponseText = backendData.response || "Message processed";
+      } else {
+        // Fallback: n8n workflow
+        const n8nRes = await fetch(process.env.N8N_WEBHOOK_URL!, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Header ${process.env.N8N_AUTH_TOKEN}`,
+          },
+          body: JSON.stringify({
+            Body: body,
+            From: customerPhone,
+            conversationId: conversation.id,
+            messageId: insertedMsg.id,
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!n8nRes.ok) throw new Error(`n8n error: ${n8nRes.statusText}`);
+
+        await n8nRes.json();
+        aiResponseText = "Message sent via n8n workflow";
+      }
     } catch (err: any) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
-        aiError = 'Timeout: n8n took too long to respond';
+        aiError = 'Timeout: AI backend took too long to respond';
       } else {
         aiError = err.message;
       }

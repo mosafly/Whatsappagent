@@ -2,7 +2,7 @@
 
 client_id = "d44e8f1d40c4b9e23a41f4c1e139ab33"
 name = "Whatsappagent"
-application_url = "https://bureau-singer-salmon-paid.trycloudflare.com"
+application_url = "https://whatsappagent-five.vercel.app/"
 embedded = true
 
 [build]
@@ -35,8 +35,8 @@ use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://bureau-singer-salmon-paid.trycloudflare.com/api/auth/callback",
-  "https://bureau-singer-salmon-paid.trycloudflare.com/api/auth/shopify/callback",
+  "https://whatsappagent-five.vercel.app/api/auth/callback",
+  "https://whatsappagent-five.vercel.app/api/auth/shopify/callback",
   "http://localhost:3000/api/auth/callback"
 ]
 

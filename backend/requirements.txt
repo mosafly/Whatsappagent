@@ -1,0 +1,24 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic-settings==2.7.1
+
+# LangChain RAG
+langchain==0.3.14
+langchain-openai==0.3.2
+langchain-community==0.3.14
+
+# Supabase
+supabase==2.11.0
+vecs==0.4.4
+
+# Twilio
+twilio==9.4.3
+
+# Celery + Redis
+celery[redis]==5.4.0
+redis==5.2.1
+
+# Utilities
+httpx==0.28.1
+python-dotenv==1.0.1

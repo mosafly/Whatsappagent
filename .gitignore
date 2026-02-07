@@ -57,6 +57,11 @@ ux_paths.txt
 .windsurf/
 .claude/
 
+# backend python
+backend/__pycache__/
+backend/.env
+backend/*.pyc
+
 # supabase temp
 /supabase/.temp/
 
