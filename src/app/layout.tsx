@@ -4,6 +4,8 @@ import "./globals.css";
 import { Providers } from "@/components/providers/Providers";
 import { AppLayoutWrapper } from "@/components/layout/AppLayoutWrapper";
 
+export const dynamic = 'force-dynamic';
+
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],

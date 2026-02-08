@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { Suspense, useState, useEffect, useMemo } from 'react';
 import {
   Page,
   Layout,
@@ -33,6 +33,26 @@ type RecentConversation = {
 };
 
 export default function Home() {
+  return (
+    <Suspense fallback={
+      <Page title="Dashboard">
+        <Layout>
+          <Layout.Section>
+            <Card>
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+                <Spinner size="large" />
+              </div>
+            </Card>
+          </Layout.Section>
+        </Layout>
+      </Page>
+    }>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+function HomeContent() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentConversations, setRecentConversations] = useState<RecentConversation[]>([]);
   const [loading, setLoading] = useState(true);
