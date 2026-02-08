@@ -6,17 +6,33 @@ import crypto from 'crypto';
 // Initialisation Prisma
 const prisma = new PrismaClient();
 
-// Configuration Shopify pour Next.js
-const shopify = shopifyApi({
-  apiVersion: LATEST_API_VERSION,
-  adminApiVersion: LATEST_API_VERSION,
-  restAdminApiVersion: LATEST_API_VERSION,
-  isCustomStoreApp: false,
-  apiKey: process.env.SHOPIFY_API_KEY!,
-  apiSecretKey: process.env.SHOPIFY_API_SECRET!,
-  scopes: process.env.SCOPES?.split(',') || [],
-  hostName: process.env.HOST?.replace(/https?:\/\//, '') || 'localhost:3000',
-  isEmbeddedApp: true,
+// Configuration Shopify pour Next.js (lazy initialization)
+let _shopify: ReturnType<typeof shopifyApi> | null = null;
+
+function getShopifyApi() {
+  if (!_shopify) {
+    if (!process.env.SHOPIFY_API_KEY || !process.env.SHOPIFY_API_SECRET) {
+      throw new Error('Shopify API credentials not configured. Set SHOPIFY_API_KEY and SHOPIFY_API_SECRET.');
+    }
+    _shopify = shopifyApi({
+      apiVersion: LATEST_API_VERSION,
+      adminApiVersion: LATEST_API_VERSION,
+      restAdminApiVersion: LATEST_API_VERSION,
+      isCustomStoreApp: false,
+      apiKey: process.env.SHOPIFY_API_KEY,
+      apiSecretKey: process.env.SHOPIFY_API_SECRET,
+      scopes: process.env.SCOPES?.split(',') || [],
+      hostName: process.env.HOST?.replace(/https?:\/\//, '') || 'localhost:3000',
+      isEmbeddedApp: true,
+    });
+  }
+  return _shopify;
+}
+
+const shopify = new Proxy({} as ReturnType<typeof shopifyApi>, {
+  get(_target, prop) {
+    return (getShopifyApi() as any)[prop];
+  },
 });
 
 // Session storage custom pour Next.js
