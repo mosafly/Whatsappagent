@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # Twilio
     twilio_account_sid: str
     twilio_auth_token: str
-    twilio_whatsapp_number: str = "+14155238886"
+    twilio_whatsapp_number: str = "+2250104278080"
 
     # Redis
     redis_url: str = "redis://redis:6379/0"
