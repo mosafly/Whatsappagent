@@ -40,12 +40,37 @@ export async function POST(req: NextRequest) {
     const rawBody = await req.text();
     const params = parseUrlEncodedBody(rawBody);
 
-    // Reconstruct the webhook URL as Twilio sees it
-    const webhookUrl = `https://whatsappagent-five.vercel.app/api/webhooks/twilio`;
+    // Debug logging
+    console.log('[Twilio Debug] authToken prefix:', authToken.substring(0, 6) + '...');
+    console.log('[Twilio Debug] signature:', signature);
+    console.log('[Twilio Debug] params keys:', Object.keys(params).sort().join(', '));
+    console.log('[Twilio Debug] req.url:', req.url);
+    console.log('[Twilio Debug] x-forwarded-proto:', req.headers.get('x-forwarded-proto'));
+    console.log('[Twilio Debug] x-forwarded-host:', req.headers.get('x-forwarded-host'));
+    console.log('[Twilio Debug] host:', req.headers.get('host'));
 
-    const isValid = twilio.validateRequest(authToken, signature, webhookUrl, params);
+    // Try multiple URL variants to find the right one
+    const urlVariants = [
+      'https://whatsappagent-five.vercel.app/api/webhooks/twilio',
+      'https://whatsappagent-five.vercel.app/api/webhooks/twilio/',
+      req.url,
+    ];
+
+    let isValid = false;
+    let matchedUrl = '';
+    for (const url of urlVariants) {
+      if (twilio.validateRequest(authToken, signature, url, params)) {
+        isValid = true;
+        matchedUrl = url;
+        console.log('[Twilio Debug] ✅ Signature matched with URL:', url);
+        break;
+      } else {
+        console.log('[Twilio Debug] ❌ Signature failed with URL:', url);
+      }
+    }
+
     if (!isValid) {
-      console.error('[Twilio Signature] Validation failed', { webhookUrl, signature });
+      console.error('[Twilio Signature] Validation failed with ALL URL variants');
       return new NextResponse('Forbidden', { status: 403 });
     }
     
