@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import crypto from 'crypto';
+import twilio from 'twilio';
 
 // Configuration du client Supabase avec la clé de service pour contourner le RLS lors du webhook
 const supabaseAdmin = createClient(
@@ -8,16 +8,16 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-function validateTwilioSignature(body: string, signature: string, url: string, authToken: string): boolean {
-  const expectedSignature = crypto
-    .createHmac('sha1', authToken)
-    .update(url + body)
-    .digest('base64');
-  
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expectedSignature)
-  );
+function parseUrlEncodedBody(rawBody: string): Record<string, string> {
+  const params: Record<string, string> = {};
+  const pairs = rawBody.split('&');
+  for (const pair of pairs) {
+    const [key, value] = pair.split('=');
+    if (key) {
+      params[decodeURIComponent(key)] = value ? decodeURIComponent(value.replace(/\+/g, ' ')) : '';
+    }
+  }
+  return params;
 }
 
 /**
@@ -37,32 +37,22 @@ export async function POST(req: NextRequest) {
       return new NextResponse('Twilio auth token missing', { status: 500 });
     }
 
-    const forwardedProto = req.headers.get('x-forwarded-proto');
-    const forwardedHost = req.headers.get('x-forwarded-host');
-    const baseUrl = forwardedProto && forwardedHost
-      ? `${forwardedProto}://${forwardedHost}`
-      : new URL(req.url).origin;
-    const url = `${baseUrl}${req.nextUrl.pathname}${req.nextUrl.search}`;
     const rawBody = await req.text();
-    
-    if (!validateTwilioSignature(rawBody, signature, url, authToken)) {
+    const params = parseUrlEncodedBody(rawBody);
+
+    // Reconstruct the webhook URL as Twilio sees it
+    const webhookUrl = `https://whatsappagent-five.vercel.app/api/webhooks/twilio`;
+
+    const isValid = twilio.validateRequest(authToken, signature, webhookUrl, params);
+    if (!isValid) {
+      console.error('[Twilio Signature] Validation failed', { webhookUrl, signature });
       return new NextResponse('Forbidden', { status: 403 });
     }
     
-    // Reparser le FormData après avoir lu le body
-    const formData = new FormData();
-    const pairs = rawBody.split('&');
-    for (const pair of pairs) {
-      const [key, value] = pair.split('=');
-      if (key && value) {
-        formData.append(decodeURIComponent(key), decodeURIComponent(value));
-      }
-    }
-    
-    const body = formData.get('Body') as string;
-    const from = formData.get('From') as string; // Format: whatsapp:+225...
-    const to = formData.get('To') as string;     // Numéro de la boutique
-    const messageSid = formData.get('SmsMessageSid') as string;
+    const body = params['Body'] || '';
+    const from = params['From'] || ''; // Format: whatsapp:+225...
+    const to = params['To'] || '';     // Numéro de la boutique
+    const messageSid = params['SmsMessageSid'] || '';
 
     // Validation basique
     if (!from || !body) {
