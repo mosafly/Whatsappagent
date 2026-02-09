@@ -20,8 +20,19 @@ def get_supabase() -> Client:
 async def get_conversation(conversation_id: str) -> Optional[dict]:
     """Fetch a conversation by ID."""
     client = get_supabase()
-    result = client.table("conversations").select("*").eq("id", conversation_id).maybe_single().execute()
-    return result.data
+    try:
+        result = client.table("conversations").select("*").eq("id", conversation_id).maybe_single().execute()
+        return result.data
+    except Exception as e:
+        logger.warning(f"get_conversation({conversation_id}): {e}")
+        # Fallback: try with .execute() and pick first result
+        try:
+            result = client.table("conversations").select("*").eq("id", conversation_id).execute()
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+        except Exception as e2:
+            logger.error(f"get_conversation fallback failed: {e2}")
+        return None
 
 
 async def get_conversation_messages(conversation_id: str, limit: int = 10) -> list[dict]:
