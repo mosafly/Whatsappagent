@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import twilio from 'twilio';
 
-// Configuration du client Supabase avec la clé de service pour contourner le RLS lors du webhook
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy Supabase admin client — created at runtime to ensure env vars are available
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 function parseUrlEncodedBody(rawBody: string): Record<string, string> {
   const params: Record<string, string> = {};
@@ -25,6 +27,8 @@ function parseUrlEncodedBody(rawBody: string): Record<string, string> {
  * Story 1.1 & 1.3: Webhook Twilio & Agent IA Concierge Bobotcho
  */
 export async function POST(req: NextRequest) {
+  const supabaseAdmin = getSupabaseAdmin();
+
   try {
     // 0. Validation signature Twilio (sécurité critique)
     const signature = req.headers.get('x-twilio-signature');
@@ -39,6 +43,14 @@ export async function POST(req: NextRequest) {
 
     const rawBody = await req.text();
     const params = parseUrlEncodedBody(rawBody);
+
+    // Debug Supabase config
+    const sbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'MISSING';
+    const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'MISSING';
+    console.log('[Supabase Debug] URL:', sbUrl);
+    console.log('[Supabase Debug] Key prefix:', sbKey.substring(0, 20) + '...');
+    console.log('[Supabase Debug] Key ends with:', sbKey.substring(sbKey.length - 6));
+    console.log('[Supabase Debug] Key role:', sbKey.includes('service_role') ? 'service_role ✅' : 'NOT service_role ❌');
 
     // Debug logging
     console.log('[Twilio Debug] authToken prefix:', authToken.substring(0, 6) + '...');
