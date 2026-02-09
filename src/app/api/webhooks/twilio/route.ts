@@ -223,11 +223,13 @@ export async function POST(req: NextRequest) {
         });
 
         clearTimeout(timeoutId);
+        console.log('[Step 4] Backend response status:', backendRes.status);
 
         if (!backendRes.ok) throw new Error(`Backend error: ${backendRes.statusText}`);
 
         const backendData = await backendRes.json();
         aiResponseText = backendData.response || "Message processed";
+        console.log('[Step 4] Backend response OK, aiResponseText length:', aiResponseText.length);
       } else {
         // Fallback: n8n workflow
         const n8nRes = await fetch(process.env.N8N_WEBHOOK_URL!, {
@@ -259,6 +261,7 @@ export async function POST(req: NextRequest) {
       } else {
         aiError = err.message;
       }
+      console.error('[Step 4] Backend call FAILED:', aiError);
     }
 
     const endTime = Date.now();
