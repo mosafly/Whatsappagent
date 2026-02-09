@@ -186,7 +186,12 @@ export async function POST(req: NextRequest) {
     const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
     try {
+      console.log('[Backend Debug] BACKEND_URL:', BACKEND_URL || 'MISSING');
+      console.log('[Backend Debug] conversationId:', conversation.id);
+      console.log('[Backend Debug] messageId:', insertedMsg.id);
+
       if (BACKEND_URL) {
+        console.log('[Backend Debug] Calling FastAPI backend...');
         // FastAPI backend (replaces n8n)
         const backendRes = await fetch(`${BACKEND_URL}/api/ai-response`, {
           method: 'POST',
