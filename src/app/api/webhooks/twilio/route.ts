@@ -97,14 +97,19 @@ export async function POST(req: NextRequest) {
     }
 
     // 0.1. Idempotence - vérifier si le message existe déjà
+    console.log('[Step 0.1] Checking idempotence for messageSid:', messageSid);
     const existingMessage = await supabaseAdmin
       .from('messages')
       .select('id')
       .eq('twilio_sid', messageSid)
       .maybeSingle();
 
+    if (existingMessage.error) {
+      console.log('[Step 0.1] Idempotence check error (ignoring):', existingMessage.error.message);
+    }
+
     if (existingMessage.data) {
-      // Message déjà traité, renvoyer une réponse vide
+      console.log('[Step 0.1] Message already processed, returning empty response');
       return new NextResponse(
         '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
         { headers: { 'Content-Type': 'text/xml' } }
@@ -113,6 +118,7 @@ export async function POST(req: NextRequest) {
 
     const customerPhone = from.replace('whatsapp:', '');
     
+    console.log('[Step 1] Finding shop...');
     // 1. Trouver ou créer la boutique (mono-tenant pour le moment)
     const { data: shop, error: shopError } = await supabaseAdmin
       .from('shops')
@@ -121,10 +127,12 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (shopError || !shop) {
-      console.error('Shop not found:', shopError);
+      console.error('[Step 1] Shop not found:', shopError);
       return new NextResponse('Shop configuration error', { status: 500 });
     }
+    console.log('[Step 1] Shop found:', shop.id);
 
+    console.log('[Step 2] Finding or creating conversation...');
     // 2. Assurer l'existence de la conversation
     let { data: conversation, error: convError } = await supabaseAdmin
       .from('conversations')
@@ -156,6 +164,8 @@ export async function POST(req: NextRequest) {
         .eq('id', conversation.id);
     }
 
+    console.log('[Step 2] Conversation ID:', conversation.id);
+    console.log('[Step 3] Inserting message...');
     // 3. Insérer le message entrant
     const { data: insertedMsg, error: msgError } = await supabaseAdmin
       .from('messages')
@@ -173,7 +183,11 @@ export async function POST(req: NextRequest) {
       .select('id')
       .single();
 
-    if (msgError) throw msgError;
+    if (msgError) {
+      console.error('[Step 3] Message insert error:', msgError);
+      throw msgError;
+    }
+    console.log('[Step 3] Message inserted:', insertedMsg.id);
 
     // 4. Appel à l'Agent IA (FastAPI backend ou n8n fallback)
     const startTime = Date.now();
