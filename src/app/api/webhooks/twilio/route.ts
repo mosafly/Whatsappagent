@@ -134,6 +134,7 @@ export async function POST(req: NextRequest) {
 
     console.log('[Step 2] Finding or creating conversation...');
     // 2. Assurer l'existence de la conversation
+    let isNewConversation = false;
     let { data: conversation, error: convError } = await supabaseAdmin
       .from('conversations')
       .select('id')
@@ -143,6 +144,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (!conversation) {
+      isNewConversation = true;
       const { data: newConv, error: createConvError } = await supabaseAdmin
         .from('conversations')
         .insert({
@@ -189,79 +191,119 @@ export async function POST(req: NextRequest) {
     }
     console.log('[Step 3] Message inserted:', insertedMsg.id);
 
-    // 4. Appel à l'Agent IA (FastAPI backend ou n8n fallback)
+    // 4. Répondre au client
     const startTime = Date.now();
     let aiResponseText = "";
     let aiError = null;
 
-    const BACKEND_URL = process.env.BACKEND_URL; // FastAPI backend
-    const AI_TIMEOUT_MS = 25000;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+    if (isNewConversation) {
+      // ── Nouveau client → Envoyer le template optin_consent ──
+      console.log('[Step 4] New conversation → Sending optin template...');
+      const OPTIN_CONTENT_SID = 'HX529df21b4f133e8d9d0887f7236ed7d8';
+      const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID!;
+      const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN!;
+      const TWILIO_FROM = process.env.TWILIO_WHATSAPP_NUMBER || '+2250104278080';
 
-    try {
-      console.log('[Backend Debug] BACKEND_URL:', BACKEND_URL || 'MISSING');
-      console.log('[Backend Debug] conversationId:', conversation.id);
-      console.log('[Backend Debug] messageId:', insertedMsg.id);
+      try {
+        const twilioRes = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Authorization': 'Basic ' + Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64'),
+            },
+            body: new URLSearchParams({
+              From: `whatsapp:${TWILIO_FROM}`,
+              To: `whatsapp:${customerPhone}`,
+              ContentSid: OPTIN_CONTENT_SID,
+              ContentVariables: JSON.stringify({ "1": "Bobotcho", "2": "OUI" }),
+            }).toString(),
+          }
+        );
 
-      if (BACKEND_URL) {
-        console.log('[Backend Debug] Calling FastAPI backend...');
-        // FastAPI backend (replaces n8n)
-        const backendRes = await fetch(`${BACKEND_URL}/api/ai-response`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': process.env.BACKEND_API_KEY || '',
-          },
-          body: JSON.stringify({
-            Body: body,
-            From: customerPhone,
-            conversationId: conversation.id,
-            messageId: insertedMsg.id,
-          }),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-        console.log('[Step 4] Backend response status:', backendRes.status);
-
-        if (!backendRes.ok) throw new Error(`Backend error: ${backendRes.statusText}`);
-
-        const backendData = await backendRes.json();
-        aiResponseText = backendData.response || "Message processed";
-        console.log('[Step 4] Backend response OK, aiResponseText length:', aiResponseText.length);
-      } else {
-        // Fallback: n8n workflow
-        const n8nRes = await fetch(process.env.N8N_WEBHOOK_URL!, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Header ${process.env.N8N_AUTH_TOKEN}`,
-          },
-          body: JSON.stringify({
-            Body: body,
-            From: customerPhone,
-            conversationId: conversation.id,
-            messageId: insertedMsg.id,
-          }),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!n8nRes.ok) throw new Error(`n8n error: ${n8nRes.statusText}`);
-
-        await n8nRes.json();
-        aiResponseText = "Message sent via n8n workflow";
-      }
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        aiError = 'Timeout: AI backend took too long to respond';
-      } else {
+        const twilioData = await twilioRes.json();
+        if (twilioRes.ok) {
+          aiResponseText = 'Optin template sent';
+          console.log('[Step 4] Optin template sent:', twilioData.sid);
+        } else {
+          aiError = `Twilio error: ${twilioData.message || twilioData.code}`;
+          console.error('[Step 4] Optin template FAILED:', twilioData);
+        }
+      } catch (err: any) {
         aiError = err.message;
+        console.error('[Step 4] Optin template exception:', err.message);
       }
-      console.error('[Step 4] Backend call FAILED:', aiError);
+    } else {
+      // ── Client existant → Appel backend IA ──
+      const BACKEND_URL = process.env.BACKEND_URL;
+      const AI_TIMEOUT_MS = 25000;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+
+      try {
+        console.log('[Backend Debug] BACKEND_URL:', BACKEND_URL || 'MISSING');
+        console.log('[Backend Debug] conversationId:', conversation.id);
+        console.log('[Backend Debug] messageId:', insertedMsg.id);
+
+        if (BACKEND_URL) {
+          console.log('[Backend Debug] Calling FastAPI backend...');
+          const backendRes = await fetch(`${BACKEND_URL}/api/ai-response`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Key': process.env.BACKEND_API_KEY || '',
+            },
+            body: JSON.stringify({
+              Body: body,
+              From: customerPhone,
+              conversationId: conversation.id,
+              messageId: insertedMsg.id,
+            }),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+          console.log('[Step 4] Backend response status:', backendRes.status);
+
+          if (!backendRes.ok) throw new Error(`Backend error: ${backendRes.statusText}`);
+
+          const backendData = await backendRes.json();
+          aiResponseText = backendData.response || "Message processed";
+          console.log('[Step 4] Backend response OK, aiResponseText length:', aiResponseText.length);
+        } else {
+          // Fallback: n8n workflow
+          const n8nRes = await fetch(process.env.N8N_WEBHOOK_URL!, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Header ${process.env.N8N_AUTH_TOKEN}`,
+            },
+            body: JSON.stringify({
+              Body: body,
+              From: customerPhone,
+              conversationId: conversation.id,
+              messageId: insertedMsg.id,
+            }),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+
+          if (!n8nRes.ok) throw new Error(`n8n error: ${n8nRes.statusText}`);
+
+          await n8nRes.json();
+          aiResponseText = "Message sent via n8n workflow";
+        }
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          aiError = 'Timeout: AI backend took too long to respond';
+        } else {
+          aiError = err.message;
+        }
+        console.error('[Step 4] Backend call FAILED:', aiError);
+      }
     }
 
     const endTime = Date.now();
@@ -278,12 +320,12 @@ export async function POST(req: NextRequest) {
         metrics: {
           latency_ms: latency,
           error: aiError,
-          provider: 'n8n-gpt-4o-mini',
+          provider: isNewConversation ? 'optin-template' : 'fastapi-rag',
           workflow_version: 'rag-v5'
         }
       });
 
-    // 6. n8n gère l'envoi Twilio directement, on renvoie une réponse vide
+    // 6. Renvoyer une réponse vide (Twilio gère l'envoi)
     return new NextResponse(
       '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
       {
